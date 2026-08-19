@@ -576,11 +576,86 @@ function settledAmount(doc,total){ return isSettled(doc) ? total : doc.status===
 function docPaidAmount(doc){ return settledAmount(doc,computeDoc(doc).ttc); }
 function purchasePaidAmount(p){ return settledAmount(p,computePurchase(p).ttc); }
 function isBankCleared(doc){ return ['payee','partielle'].includes(doc.status) && !!doc.paymentDate; }
-function downloadFile(name, content, mime){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type:mime||'text/plain;charset=utf-8'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500); }
+/* ============================================================================
+   Enregistrement d'un fichier (sauvegardes JSON, exports Excel/CSV).
+
+   Sur PC (navigateur ou application Windows) : lien de telechargement classique.
+   Sur Android : le WebView ignore l'attribut "download" — le fichier n'etait
+   jamais cree. On passe donc par les modules natifs de Capacitor :
+     1. Filesystem ecrit le fichier dans le cache de l'application
+     2. Share ouvre le menu de partage Android (Fichiers, WhatsApp, Drive, mail…)
+   C'est ce qui permet de transferer les donnees du PC vers le telephone.
+   ========================================================================== */
+function estAndroid(){
+  return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform==='function'
+            && window.Capacitor.isNativePlatform());
+}
+function downloadFile(name, content, mime){
+  if(estAndroid()){ return downloadFileAndroid(name, content); }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:mime||'text/plain;charset=utf-8'}));
+  a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500);
+}
+async function downloadFileAndroid(name, content){
+  try{
+    const P = window.Capacitor.Plugins;
+    if(!P || !P.Filesystem){ toast("Module de fichiers indisponible"); return; }
+    await P.Filesystem.writeFile({ path:name, data:content, directory:'CACHE', encoding:'utf8' });
+    const { uri } = await P.Filesystem.getUri({ path:name, directory:'CACHE' });
+    if(P.Share){
+      await P.Share.share({ title:name, dialogTitle:'Enregistrer ou envoyer le fichier', files:[uri] });
+      toast('Fichier prêt : '+name);
+    } else {
+      toast('Fichier enregistré : '+name);
+    }
+  }catch(e){
+    // "Share canceled" survient si l'utilisateur ferme le menu : ce n'est pas une erreur
+    if(/cancel/i.test(e && e.message || '')) return;
+    toast('Échec de l’enregistrement : '+(e && e.message ? e.message : e));
+  }
+}
 function csvCell(v){ return '"'+String(v??'').replace(/"/g,'""')+'"'; }
 function exportCsv(name, headers, rows){ const csv='\uFEFF'+[headers,...rows].map(r=>r.map(csvCell).join(';')).join('\n'); downloadFile(name+'.csv',csv,'text/csv;charset=utf-8'); }
 function exportBackup(){ downloadFile('sauvegarde-facturation-'+todayISO()+'.json',JSON.stringify(state,null,2),'application/json'); }
-function importBackup(file){ const r=new FileReader(); r.onload=e=>{ try{ const data=JSON.parse(e.target.result); if(!data || !Array.isArray(data.docs) || !Array.isArray(data.clients)) throw new Error(); state=Object.assign(structuredClone(DEFAULT_STATE),data); save(); renderAll(); toast('Sauvegarde restaurée'); }catch(_){ toast('Fichier de sauvegarde invalide'); } }; r.readAsText(file); }
+/* Restauration d'une sauvegarde (transfert PC -> telephone, ou retour arriere).
+   ATTENTION : l'operation REMPLACE l'integralite des donnees de l'appareil.
+   On affiche donc le contenu du fichier et on demande confirmation avant. */
+function importBackup(file){
+  const r=new FileReader();
+  r.onerror=()=>toast('Impossible de lire le fichier');
+  r.onload=e=>{
+    let data;
+    try{
+      data=JSON.parse(e.target.result);
+    }catch(_){ toast('Fichier illisible : ce n’est pas une sauvegarde JSON valide'); return; }
+    if(!data || !Array.isArray(data.docs) || !Array.isArray(data.clients)){
+      toast('Fichier de sauvegarde invalide'); return;
+    }
+    const n=(t)=>Array.isArray(data[t])?data[t].length:0;
+    const factures=data.docs.filter(d=>d.type==='facture'&&(d.nature||'doit')!=='avoir').length;
+    const avoirs=data.docs.filter(d=>d.type==='facture'&&d.nature==='avoir').length;
+    const actuel=(state.docs||[]).length+(state.clients||[]).length+(state.purchases||[]).length;
+    const lignes=['Contenu de la sauvegarde :',
+      '  - '+n('clients')+' client(s)',
+      '  - '+n('suppliers')+' fournisseur(s)',
+      '  - '+factures+' facture(s) et '+avoirs+' avoir(s)',
+      '  - '+n('purchases')+' achat(s)',
+      '  - societe : '+((data.company&&data.company.name)||'(non renseignee)'),
+      ''];
+    if(actuel>0){
+      lignes.push('ATTENTION : cet appareil contient deja des donnees.');
+      lignes.push('Elles seront TOUTES remplacees par celles du fichier.');
+      lignes.push('');
+    }
+    lignes.push('Confirmer la restauration ?');
+    const message=lignes.join('\n');
+    if(!confirm(message)) { toast('Restauration annulée'); return; }
+    state=Object.assign(structuredClone(DEFAULT_STATE),data);
+    save(); renderAll();
+    toast('Sauvegarde restaurée — '+n('clients')+' client(s), '+data.docs.length+' document(s)');
+  };
+  r.readAsText(file);
+}
 
 /* ============================= NAV ============================= */
 const VIEWS=[
