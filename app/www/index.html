@@ -441,11 +441,74 @@ tr:hover td{background:#F5F3EC;}
   .row2,.row3{grid-template-columns:1fr;}
 }
 
+/* ===================== AFFICHAGE TELEPHONE (<= 760 px) =====================
+   Sur un ecran de telephone, la barre laterale fixe consommait la largeur et le
+   contenu debordait. Elle devient ici un menu coulissant, ouvert par le bouton
+   en haut a gauche. L'affichage sur PC n'est pas modifie. */
+.mobile-topbar{display:none;}
+.nav-backdrop{display:none;}
+@media (max-width:760px){
+  .mobile-topbar{
+    display:flex;align-items:center;gap:12px;
+    position:sticky;top:0;z-index:40;
+    background:var(--teal-deep);color:#fff;
+    padding:10px 14px;
+  }
+  .mobile-topbar button{
+    background:rgba(255,255,255,.12);border:none;color:#fff;
+    font-size:20px;line-height:1;padding:6px 12px;border-radius:6px;
+  }
+  .mobile-topbar .titre{font-family:'Fraunces',serif;font-size:17px;}
+
+  .app{flex-direction:column;}
+  .sidebar{
+    position:fixed;top:0;left:0;bottom:0;width:78vw;max-width:300px;
+    transform:translateX(-100%);transition:transform .22s ease;
+    z-index:60;overflow-y:auto;
+  }
+  body.nav-ouvert .sidebar{transform:none;box-shadow:0 0 30px rgba(0,0,0,.4);}
+  body.nav-ouvert .nav-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55;}
+  /* dans le menu coulissant, les libelles redeviennent visibles */
+  .brand span, nav button span.label{display:inline;}
+
+  .main{padding:14px 12px 40px;max-width:100%;}
+  .topbar{flex-direction:column;align-items:stretch;gap:12px;margin-bottom:18px;}
+  .topbar h2{font-size:22px;}
+  .topbar > div[style*="display:flex"]{flex-wrap:wrap;}
+
+  /* une seule colonne : les chiffres cles ne sont plus tronques */
+  .grid-4{grid-template-columns:1fr !important;gap:10px;}
+  .stat{padding:13px 15px;}
+  .stat .value{font-size:21px;}
+
+  .card{padding:14px;overflow-x:auto !important;}
+  .filters{flex-direction:column;align-items:stretch;gap:8px;}
+  .filters select,.filters input{width:100%;}
+
+  /* les tableaux larges defilent horizontalement au lieu d'etre coupes */
+  table{font-size:12.5px;}
+  th,td{padding:8px 7px;white-space:nowrap;}
+
+  .btn{padding:10px 14px;}
+  .modal{max-width:100%;border-radius:0;}
+  .modal-body{max-height:72vh;padding:16px;}
+  .modal-foot{flex-wrap:wrap;}
+  .totals-box{width:100%;}
+  /* 16px minimum : evite le zoom automatique du navigateur a la saisie */
+  input,select,textarea{font-size:16px;}
+}
+
 .vat-open{background:#EDEAE0;color:#6B6555}.vat-validated{background:#DCEAEA;color:var(--teal-deep)}.vat-locked{background:#F5DAD3;color:var(--danger)}
 .lock-note{padding:9px 12px;border:1px solid #E4C9C2;background:#FBF0ED;color:var(--danger);border-radius:6px;font-size:12.5px;margin-bottom:12px}.mini-card{background:#F8F7F1;border:1px solid var(--line);border-radius:7px;padding:12px}
 </style>
 </head>
 <body>
+
+<div class="mobile-topbar" id="mobileTopbar">
+  <button id="navToggle" aria-label="Menu">&#9776;</button>
+  <span class="titre">AFRAH COMPTA</span>
+</div>
+<div class="nav-backdrop" id="navBackdrop"></div>
 
 <div class="app">
   <aside class="sidebar">
@@ -3947,6 +4010,22 @@ bindViewEvents = function(){
   _bindViewEventsWithNoInvLink();
   document.getElementById('btnGoNoInvoicePayments')?.addEventListener('click', ()=>{ currentView='paiements_sans_facture'; renderAll(); });
 };
+
+/* ============= MENU COULISSANT (telephone uniquement) =============
+   Sur PC ces elements sont masques par le CSS : aucun effet. */
+(function menuTelephone(){
+  const bouton=document.getElementById('navToggle');
+  const voile=document.getElementById('navBackdrop');
+  const ouvrir=()=>document.body.classList.add('nav-ouvert');
+  const fermer=()=>document.body.classList.remove('nav-ouvert');
+  if(bouton) bouton.onclick=()=>document.body.classList.toggle('nav-ouvert');
+  if(voile) voile.onclick=fermer;
+  // le menu se referme des qu'un ecran est choisi
+  const nav=document.getElementById('navMenu');
+  if(nav) nav.addEventListener('click', e=>{ if(e.target.closest('button[data-v]')) fermer(); });
+  // et si l'on repasse en affichage large
+  window.addEventListener('resize', ()=>{ if(window.innerWidth>760) fermer(); });
+})();
 
 /* ============================= INIT ============================= */
 renderAll();
