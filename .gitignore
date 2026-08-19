@@ -10,3 +10,5 @@ app/release/
 tools/
 dist/
 cle-signature/
+.backup_avant-prompts_*.html
+AFRAH_COMPTA_Paiements_multi_paiements_2_TVA.html
