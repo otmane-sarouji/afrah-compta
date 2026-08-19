@@ -555,14 +555,46 @@ const DEFAULT_STATE = {
 };
 let state = load();
 
+/* Stockage des donnees : deux modes selon la plateforme.
+   - Windows (Electron) : fichier reel sur disque, gere par le processus
+     principal via window.afrahStorage (voir electron/preload.js). C'est
+     desormais la source de verite : localStorage n'est plus qu'une copie
+     de secours ecrite en parallele, sans jamais etre lue en priorite.
+   - Navigateur et Android : localStorage, comme auparavant (aucun changement
+     de comportement pour ces deux plateformes).
+   Migration automatique et silencieuse : si l'application Windows est mise a
+   jour et qu'aucun fichier n'existe encore mais que d'anciennes donnees sont
+   presentes dans localStorage (installations precedentes), elles sont lues
+   une seule fois puis immediatement ecrites dans le fichier. */
+function estElectron(){ return !!(window.afrahStorage && window.afrahStorage.disponible); }
 function load(){
   try{
+    if(estElectron()){
+      const brutFichier = window.afrahStorage.chargerSync();
+      if(brutFichier) return Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(brutFichier));
+      // aucun fichier encore : migration ponctuelle depuis une ancienne installation
+      const brutAncien = localStorage.getItem('facturis_state');
+      if(brutAncien){
+        const donnees = Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(brutAncien));
+        window.afrahStorage.enregistrerSync(JSON.stringify(donnees));
+        return donnees;
+      }
+      return structuredClone(DEFAULT_STATE);
+    }
     const raw = localStorage.getItem('facturis_state');
     if(!raw) return structuredClone(DEFAULT_STATE);
     return Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(raw));
   }catch(e){ return structuredClone(DEFAULT_STATE); }
 }
-function save(){ localStorage.setItem('facturis_state', JSON.stringify(state)); }
+function save(){
+  const json = JSON.stringify(state);
+  if(estElectron()){
+    window.afrahStorage.enregistrerSync(json);
+    try{ localStorage.setItem('facturis_state', json); }catch(e){} // copie de secours, best-effort
+    return;
+  }
+  localStorage.setItem('facturis_state', json);
+}
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function toast(msg){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
